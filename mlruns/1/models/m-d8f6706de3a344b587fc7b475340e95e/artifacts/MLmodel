@@ -1,0 +1,23 @@
+artifact_path: file:C:/1nf3rn0/projects/Energy-Demand-Predictor/mlruns/1/models/m-d8f6706de3a344b587fc7b475340e95e/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.13.9
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.7.2
+    skops_trusted_types: null
+mlflow_version: 3.15.1
+model_id: m-d8f6706de3a344b587fc7b475340e95e
+model_size_bytes: 48701505
+model_uuid: m-d8f6706de3a344b587fc7b475340e95e
+prompts: null
+run_id: 0f843f24347a4e4a843739d0f2ca81b5
+utc_time_created: '2026-08-23 12:46:53.478677'

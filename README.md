@@ -9,6 +9,15 @@ for an hourly energy-demand forecasting model.
 pip install -r requirements.txt
 ```
 
+## Quick start (run in order)
+
+```bash
+python src/fetch_data.py --synthetic   # 1. generate/download data
+python src/features.py                 # 2. build features
+python src/train.py --run-name baseline_rf   # 3. train + log to MLflow
+mlflow ui --backend-store-uri sqlite:///mlflow.db   # 4. (optional) view results
+```
+
 ## Day 1–2 pipeline
 
 ### 1. Get data — `src/fetch_data.py`

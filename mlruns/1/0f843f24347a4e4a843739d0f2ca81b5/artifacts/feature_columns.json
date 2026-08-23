@@ -1,0 +1,26 @@
+{
+  "feature_columns": [
+    "temp_c",
+    "humidity",
+    "wind_speed",
+    "hour",
+    "dayofweek",
+    "month",
+    "is_weekend",
+    "hour_sin",
+    "hour_cos",
+    "doy_sin",
+    "doy_cos",
+    "energy_lag_1h",
+    "energy_lag_2h",
+    "energy_lag_3h",
+    "energy_lag_24h",
+    "energy_lag_168h",
+    "energy_roll_mean_24h",
+    "energy_roll_std_24h",
+    "temp_roll_mean_24h",
+    "energy_roll_mean_168h",
+    "energy_roll_std_168h",
+    "temp_roll_mean_168h"
+  ]
+}
