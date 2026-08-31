@@ -41,49 +41,49 @@ def evaluate(y_true, y_pred) -> dict:
     }
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--n-estimators", type=int, default=300)
-    parser.add_argument("--max-depth", type=int, default=12)
-    parser.add_argument("--min-samples-leaf", type=int, default=5)
-    parser.add_argument("--test-frac", type=float, default=0.2)
-    parser.add_argument("--experiment-name", default="energy-demand-forecasting")
-    parser.add_argument("--run-name", default=None)
-    args = parser.parse_args()
-
+def run_training(
+    n_estimators: int = 300,
+    max_depth: int = 12,
+    min_samples_leaf: int = 5,
+    test_frac: float = 0.2,
+    experiment_name: str = "energy-demand-forecasting",
+    run_name: str | None = None,
+) -> dict:
+    """Train one run and log it to MLflow. Callable directly (used by
+    scripts/retrain_pipeline.py) as well as from the CLI below."""
     mlflow.set_tracking_uri(f"sqlite:///{ROOT / 'mlflow.db'}")
-    mlflow.set_experiment(args.experiment_name)
+    mlflow.set_experiment(experiment_name)
 
     # Rebuild features fresh each run (cheap here; keeps the run fully
     # reproducible from raw data rather than depending on a stale CSV).
     df = build_feature_frame()
     feat_cols = get_feature_columns(df)
-    train_df, test_df = time_split(df, test_frac=args.test_frac)
+    train_df, test_df = time_split(df, test_frac=test_frac)
 
     X_train, y_train = train_df[feat_cols], train_df[TARGET]
     X_test, y_test = test_df[feat_cols], test_df[TARGET]
 
     preprocessing = build_preprocessing_pipeline(feat_cols)
     model = RandomForestRegressor(
-        n_estimators=args.n_estimators,
-        max_depth=args.max_depth,
-        min_samples_leaf=args.min_samples_leaf,
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
         n_jobs=-1,
         random_state=42,
     )
     pipeline = Pipeline(steps=[("preprocessing", preprocessing), ("model", model)])
 
-    with mlflow.start_run(run_name=args.run_name):
+    with mlflow.start_run(run_name=run_name):
         mlflow.log_params(
             {
                 "model_type": "RandomForestRegressor",
-                "n_estimators": args.n_estimators,
-                "max_depth": args.max_depth,
-                "min_samples_leaf": args.min_samples_leaf,
+                "n_estimators": n_estimators,
+                "max_depth": max_depth,
+                "min_samples_leaf": min_samples_leaf,
                 "n_features": len(feat_cols),
                 "n_train_rows": len(train_df),
                 "n_test_rows": len(test_df),
-                "test_frac": args.test_frac,
+                "test_frac": test_frac,
                 "random_state": 42,
             }
         )
@@ -105,6 +105,33 @@ def main():
         print(f"Run ID: {run_id}")
         print("Train metrics:", {k: round(v, 3) for k, v in train_metrics.items()})
         print("Test metrics: ", {k: round(v, 3) for k, v in test_metrics.items()})
+
+        return {
+            "run_id": run_id,
+            "train_metrics": train_metrics,
+            "test_metrics": test_metrics,
+            "model_uri": f"runs:/{run_id}/model",
+        }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--n-estimators", type=int, default=300)
+    parser.add_argument("--max-depth", type=int, default=12)
+    parser.add_argument("--min-samples-leaf", type=int, default=5)
+    parser.add_argument("--test-frac", type=float, default=0.2)
+    parser.add_argument("--experiment-name", default="energy-demand-forecasting")
+    parser.add_argument("--run-name", default=None)
+    args = parser.parse_args()
+
+    run_training(
+        n_estimators=args.n_estimators,
+        max_depth=args.max_depth,
+        min_samples_leaf=args.min_samples_leaf,
+        test_frac=args.test_frac,
+        experiment_name=args.experiment_name,
+        run_name=args.run_name,
+    )
 
 
 if __name__ == "__main__":

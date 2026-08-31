@@ -1,4 +1,4 @@
-# Energy Demand Predictor — Week 2, Days 1–2
+# Energy Demand Predictor — Week 2, Days 1–4
 
 Model lifecycle automation, reproducibility, and experiment tracking
 for an hourly energy-demand forecasting model.
@@ -93,17 +93,97 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db
 # open http://127.0.0.1:5000
 ```
 
+## Days 3–4: validation, retraining, orchestration
+
+### 4. Validate data — `scripts/validate_data.py`
+
+```bash
+python scripts/validate_data.py
+```
+
+Runs against the raw fetched CSV, before features are built. Splits checks
+into two tiers:
+- **Blocking** (exits 1, stops the pipeline): missing/wrong-typed columns,
+  duplicate timestamps, nulls in the target column (`energy_mw`)
+- **Warning** (logged, doesn't stop the pipeline): out-of-range
+  `temp_c`/`humidity`/`wind_speed`/`energy_mw` values, gaps in the hourly
+  time series
+
+### 5. Retrain with champion/challenger — `scripts/retrain_pipeline.py`
+
+```bash
+python scripts/retrain_pipeline.py --run-name rf_challenger --n-estimators 500
+```
+
+Wraps `run_training()` (the same training logic `train.py`'s CLI uses,
+`src/train.py` refactored so it's callable, not just invocable from the
+command line). Registers the new run as a version of the
+`energy-demand-forecaster` MLflow registered model, then promotes it to the
+`@champion` alias only if its test MAE beats the current champion's (or if
+there is no champion yet). Writes the outcome to `data/retrain_status.json`.
+
+### 6. Orchestrate — `dags/energy_demand_pipeline.py`
+
+An Airflow 3.x TaskFlow DAG (`airflow.sdk`, not the older
+`airflow.decorators` path) that runs the whole thing on a simulated daily
+schedule:
+
+```
+fetch_data → validate_data → build_features → retrain_model → report_outcome
+```
+
+Each task shells out to the scripts above, so the DAG is a thin scheduling
+layer over code that's also runnable by hand.
+
+Run it via Docker:
+
+```bash
+cd docker
+docker compose up -d --build
+# UI at http://localhost:8080
+docker compose exec airflow-scheduler airflow dags trigger energy_demand_pipeline
+```
+
+`docker/Dockerfile` extends `apache/airflow:3.3.1` with this project's
+`requirements.txt`. `docker/docker-compose.yaml` runs a `LocalExecutor`
+stack (postgres, api-server, scheduler, dag-processor, triggerer — no
+Celery/Redis/worker, which is overkill for a single machine) and
+bind-mounts the whole repo into each container at `/opt/airflow/project`.
+
+Auth is Airflow 3's `SimpleAuthManager` rather than the default FAB auth
+manager — the FAB provider's `airflow users create` / `airflow roles list`
+CLI commands are broken against `apache/airflow:3.3.1`
+(`AirflowSecurityManagerV2` is missing `find_role`/`get_all_roles`), so
+`AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS=true` sidesteps that
+entirely and treats every authenticated request as admin — fine for a
+single-machine dev setup, not for anything exposed beyond localhost.
+
+Verified end-to-end: built the image, brought the stack up, triggered the
+DAG via CLI, and confirmed all 5 tasks (`fetch_data` → `validate_data` →
+`build_features` → `retrain_model` → `report_outcome`) succeeded, with
+`retrain_status.json` reflecting a real champion/challenger comparison
+against the model trained in the manual runs.
+
 ## Project layout
 
 ```
 energy-demand-mlops/
 ├── data/
 │   ├── raw/            # fetch_data.py output
-│   └── processed/       # features.py output
+│   ├── processed/       # features.py output
+│   └── retrain_status.json   # retrain_pipeline.py's last champion/challenger outcome
 ├── src/
 │   ├── fetch_data.py    # Day 1: data acquisition (Kaggle + synthetic fallback)
 │   ├── features.py      # Day 1-2: sklearn feature engineering
-│   └── train.py         # Day 2: training + MLflow tracking
+│   └── train.py         # Day 2: training + MLflow tracking (run_training() is importable)
+├── scripts/
+│   ├── validate_data.py     # Day 3: blocking + warning data checks
+│   └── retrain_pipeline.py  # Day 3-4: champion/challenger retraining
+├── dags/
+│   └── energy_demand_pipeline.py   # Day 4: Airflow TaskFlow DAG
+├── docker/
+│   ├── Dockerfile            # apache/airflow:3.3.1 + requirements.txt
+│   └── docker-compose.yaml   # LocalExecutor Airflow stack
 ├── mlflow.db             # MLflow SQLite tracking store (created on first run)
 └── requirements.txt
 ```
