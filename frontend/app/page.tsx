@@ -64,6 +64,7 @@ export default function Home() {
 
   const [datetimeLocal, setDatetimeLocal] = useState("");
   const [features, setFeatures] = useState<PredictionFeatures | null>(null);
+  const [originalFeatures, setOriginalFeatures] = useState<PredictionFeatures | null>(null);
   const [actual, setActual] = useState<{ datetime: string; value: number } | null>(null);
 
   const [loadingSample, setLoadingSample] = useState(false);
@@ -87,6 +88,7 @@ export default function Home() {
     try {
       const sample = await fetchSample();
       setFeatures(sample.features);
+      setOriginalFeatures(sample.features);
       setActual({ datetime: sample.datetime, value: sample.actual_energy_mw });
       setDatetimeLocal(sample.datetime.slice(0, 16));
     } catch (e) {
@@ -127,12 +129,22 @@ export default function Home() {
     }
   };
 
+  // "Actual demand" is only a real observation if the inputs still match
+  // exactly what /sample returned -- edit anything (the date included) and
+  // it becomes a hypothetical scenario with no ground truth to compare to.
+  const matchesSample = useMemo(() => {
+    if (!features || !originalFeatures) return false;
+    return (Object.keys(originalFeatures) as (keyof PredictionFeatures)[]).every(
+      (key) => features[key] === originalFeatures[key]
+    );
+  }, [features, originalFeatures]);
+
   const delta = useMemo(() => {
-    if (!result || !actual) return null;
+    if (!result || !actual || !matchesSample) return null;
     const diff = result.predicted_energy_mw - actual.value;
     const pct = (diff / actual.value) * 100;
     return { diff, pct };
-  }, [result, actual]);
+  }, [result, actual, matchesSample]);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-14">
@@ -264,7 +276,7 @@ export default function Home() {
             <span className="text-lg font-normal text-slate-400">MW</span>
           </p>
 
-          {actual && delta && (
+          {actual && delta ? (
             <p className="mt-3 text-sm text-slate-300">
               Actual demand at this timestamp was{" "}
               <span className="font-medium text-slate-100">
@@ -276,6 +288,11 @@ export default function Home() {
                 {delta.pct.toFixed(1)}%
               </span>
               .
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-slate-500">
+              Hypothetical scenario &mdash; inputs have been edited, so there&apos;s no real
+              observation to compare against.
             </p>
           )}
 
