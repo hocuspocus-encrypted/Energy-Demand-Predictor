@@ -3,3 +3,5 @@ pandas>=2.2
 scikit-learn>=1.5
 mlflow>=3.0
 kaggle>=1.6  # optional, only needed to pull real data from Kaggle
+fastapi>=0.115
+uvicorn[standard]>=0.30

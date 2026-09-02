@@ -164,6 +164,74 @@ DAG via CLI, and confirmed all 5 tasks (`fetch_data` → `validate_data` →
 `retrain_status.json` reflecting a real champion/challenger comparison
 against the model trained in the manual runs.
 
+## Day 5: Serve the model — `src/serve.py`
+
+```bash
+python scripts/export_champion.py   # once, or whenever the champion changes
+uvicorn src.serve:app --reload
+# docs at http://127.0.0.1:8000/docs
+```
+
+`scripts/export_champion.py` resolves the `energy-demand-forecaster`
+registry's `@champion` alias (the version `scripts/retrain_pipeline.py`
+promotes) and exports it to a standalone bundle at `model/` — a joblib
+pipeline, `feature_columns.json`, and `metadata.json` (run id, version,
+test metrics). It's loaded via `runs:/<run_id>/model` rather than
+`models:/energy-demand-forecaster@champion` directly, since the alias-URI
+form hits a Windows-specific bug in mlflow's artifact resolution where a
+local temp path gets misparsed as a URI with scheme `c` (from the drive
+letter).
+
+`src/serve.py` then loads *only* from that `model/` bundle — no mlflow,
+mlflow.db, or mlruns/ needed at serve time. That keeps the deployed
+service small (the bundle is tens of MB; the full tracking store is
+hundreds) and reproducible: `requirements-serve.txt` lists just
+FastAPI/scikit-learn/pandas/joblib, not the training-side dependencies in
+`requirements.txt`. Endpoints:
+
+- `GET /health` — liveness + which model version is loaded
+- `GET /sample` — a random real historical row (its 22 engineered
+  features plus the true `energy_mw` that occurred), so a client can
+  prefill a prediction form instead of hand-typing engineered features
+- `POST /predict` — takes the same 22 features `feature_columns.json`
+  lists (the logged pipeline only does scaling, not lag/rolling
+  recomputation) and returns `{predicted_energy_mw, model_version, run_id}`
+
+The response schema is validated at load time against the bundle's
+`feature_columns.json`, so a mismatched model/API version fails fast at
+boot instead of mispredicting silently.
+
+```bash
+curl http://127.0.0.1:8000/sample
+curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" -d '{...}'
+# {"predicted_energy_mw":31519.5,"model_version":"13","run_id":"5237e7c89a3441aabe69d0f4d7430f61"}
+```
+
+### Deploying: FastAPI backend on Render, UI on Vercel
+
+**Backend (Render)** — `Dockerfile.serve` builds a serving-only image from
+`requirements-serve.txt` and the `model/` bundle (committed to the repo,
+unlike `mlruns/`/`mlflow.db`). `render.yaml` declares it as a Docker web
+service with a `/health` check. Connect the repo on
+[render.com](https://render.com), it picks up `render.yaml` automatically;
+after the frontend is deployed, set the `ALLOWED_ORIGINS` env var on the
+Render service to its Vercel URL (comma-separated if there's more than
+one, e.g. a preview + production domain) so CORS isn't wide open in prod.
+
+**Frontend (Vercel)** — `frontend/` is a Next.js app (`app/page.tsx`) that
+calls the backend via `NEXT_PUBLIC_API_URL`. Import the repo on
+[vercel.com](https://vercel.com) with **Root Directory** set to
+`frontend`, and set `NEXT_PUBLIC_API_URL` to the Render service's URL in
+the project's environment variables. Locally, copy
+`frontend/.env.local.example` to `frontend/.env.local` and point it at
+wherever `uvicorn src.serve:app` is running.
+
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:3000, calling NEXT_PUBLIC_API_URL
+```
+
 ## Project layout
 
 ```
@@ -175,17 +243,28 @@ energy-demand-mlops/
 ├── src/
 │   ├── fetch_data.py    # Day 1: data acquisition (Kaggle + synthetic fallback)
 │   ├── features.py      # Day 1-2: sklearn feature engineering
-│   └── train.py         # Day 2: training + MLflow tracking (run_training() is importable)
+│   ├── train.py         # Day 2: training + MLflow tracking (run_training() is importable)
+│   └── serve.py         # Day 5: FastAPI /predict endpoint over the champion model
 ├── scripts/
 │   ├── validate_data.py     # Day 3: blocking + warning data checks
-│   └── retrain_pipeline.py  # Day 3-4: champion/challenger retraining
+│   ├── retrain_pipeline.py  # Day 3-4: champion/challenger retraining
+│   └── export_champion.py   # Day 5: export @champion to model/ for serving
 ├── dags/
 │   └── energy_demand_pipeline.py   # Day 4: Airflow TaskFlow DAG
 ├── docker/
 │   ├── Dockerfile            # apache/airflow:3.3.1 + requirements.txt
 │   └── docker-compose.yaml   # LocalExecutor Airflow stack
-├── mlflow.db             # MLflow SQLite tracking store (created on first run)
-└── requirements.txt
+├── model/                # Day 5: standalone champion bundle (committed, unlike mlruns/)
+│   ├── pipeline.joblib
+│   ├── feature_columns.json
+│   ├── metadata.json
+│   └── samples.json      # real rows for the UI's "load real example"
+├── frontend/              # Day 5: Next.js UI, deployed to Vercel
+├── Dockerfile.serve       # Day 5: serving-only image, deployed to Render
+├── render.yaml            # Day 5: Render service definition
+├── mlflow.db              # MLflow SQLite tracking store (created on first run)
+├── requirements.txt       # full deps: training + serving
+└── requirements-serve.txt # Day 5: serving-only deps (no mlflow/kaggle/airflow)
 ```
 
 ## Notes for later in the week

@@ -14,3 +14,10 @@ __pycache__/
 
 # Docker/Airflow local state
 docker/logs/
+
+# Frontend (Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/next-env.d.ts
+frontend/*.tsbuildinfo

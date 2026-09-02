@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: energy-demand-predictor-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.serve
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false # set to your Vercel frontend URL after it's deployed
