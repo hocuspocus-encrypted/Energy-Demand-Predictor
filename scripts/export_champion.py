@@ -23,7 +23,7 @@ import mlflow
 from mlflow import MlflowClient
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTERED_MODEL_NAME = "energy-demand-forecaster"
+REGISTERED_MODEL_NAME = "wattflow"
 CHAMPION_ALIAS = "champion"
 MODEL_DIR = ROOT / "model"
 

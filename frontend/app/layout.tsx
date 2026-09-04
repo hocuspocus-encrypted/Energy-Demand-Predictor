@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Energy Demand Predictor",
+  title: "WattFlow",
   description: "Hourly grid demand forecasts from a RandomForest model trained on real PJM data.",
 };
 

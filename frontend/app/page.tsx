@@ -151,7 +151,7 @@ export default function Home() {
       <header className="mb-10 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">
-            Energy Demand Predictor
+            WattFlow
           </h1>
           <p className="mt-1.5 text-sm text-slate-400">
             RandomForest model trained on real PJM East hourly grid demand, tracked with

@@ -1,7 +1,7 @@
 # Setup Guide
 
 Local development, training, orchestration, and deployment instructions
-for the Energy Demand Predictor. For what the project is and why it's
+for WattFlow. For what the project is and why it's
 built this way, see [README.md](README.md).
 
 ## Setup
@@ -119,7 +119,7 @@ python scripts/retrain_pipeline.py --run-name rf_challenger --n-estimators 500
 Wraps `run_training()` (the same training logic `train.py`'s CLI uses,
 `src/train.py` refactored so it's callable, not just invocable from the
 command line). Registers the new run as a version of the
-`energy-demand-forecaster` MLflow registered model, then promotes it to the
+`wattflow` MLflow registered model, then promotes it to the
 `@champion` alias only if its test MAE beats the current champion's (or if
 there is no champion yet). Writes the outcome to `data/retrain_status.json`.
 
@@ -165,6 +165,19 @@ DAG via CLI, and confirmed all 5 tasks (`fetch_data` → `validate_data` →
 `retrain_status.json` reflecting a real champion/challenger comparison
 against the model trained in the manual runs.
 
+> **Watch out:** the `fetch_data` task always runs with `--synthetic`
+> (containers don't have Kaggle credentials), and its containers have
+> `restart: unless-stopped`. Left running with the `@daily` schedule, it
+> will silently retrain on synthetic data and can promote a
+> synthetic-scale champion over a real-data one, since the
+> champion/challenger gate compares raw MAE and can't tell the two
+> datasets' scales apart. `docker compose down` (not just stopping the
+> containers) before walking away avoids it restarting itself the next
+> time Docker starts. If you bring the stack back up, re-run
+> `scripts/export_champion.py` afterward and check
+> `data/retrain_status.json`/the `@champion` alias didn't flip to a run
+> trained on the wrong data.
+
 ## Day 5: Serve the model — `src/serve.py`
 
 ```bash
@@ -173,12 +186,12 @@ uvicorn src.serve:app --reload
 # docs at http://127.0.0.1:8000/docs
 ```
 
-`scripts/export_champion.py` resolves the `energy-demand-forecaster`
+`scripts/export_champion.py` resolves the `wattflow`
 registry's `@champion` alias (the version `scripts/retrain_pipeline.py`
 promotes) and exports it to a standalone bundle at `model/` — a joblib
 pipeline, `feature_columns.json`, and `metadata.json` (run id, version,
 test metrics). It's loaded via `runs:/<run_id>/model` rather than
-`models:/energy-demand-forecaster@champion` directly, since the alias-URI
+`models:/wattflow@champion` directly, since the alias-URI
 form hits a Windows-specific bug in mlflow's artifact resolution where a
 local temp path gets misparsed as a URI with scheme `c` (from the drive
 letter).
@@ -233,6 +246,43 @@ npm install
 npm run dev   # http://localhost:3000, calling NEXT_PUBLIC_API_URL
 ```
 
+## Day 6-7: Containerize the full pipeline — `Dockerfile`
+
+```bash
+docker build -t wattflow-pipeline .
+docker run --rm -v "$(pwd):/app" wattflow-pipeline   # synthetic data, default
+```
+
+Runs `fetch_data → validate_data → build_features → retrain_pipeline` end
+to end in one container via `scripts/run_pipeline.py` — the same steps the
+Airflow DAG chains, callable as a single command without needing Airflow
+running at all. This is a third, distinct Dockerfile in the repo:
+
+| File | Purpose |
+|---|---|
+| `Dockerfile` | one-shot full pipeline run (this section) |
+| `Dockerfile.serve` | serving-only image, deployed to Render |
+| `docker/Dockerfile` | Airflow orchestration image, runs the DAG on a schedule |
+
+Mount the repo (`-v "$(pwd):/app"`) so `mlflow.db`, `mlruns/`, and `data/`
+persist on the host instead of vanishing with the container. Without a
+Kaggle dataset specified it defaults to `--synthetic`, so it runs with zero
+credentials out of the box. To train on real data, pass Kaggle credentials
+through and override the args (anything after the image name goes to
+`scripts/run_pipeline.py`, replacing the Dockerfile's default `CMD`):
+
+```bash
+docker run --rm -v "$(pwd):/app" \
+  -e KAGGLE_API_TOKEN="$(cat ~/.kaggle/access_token)" \
+  wattflow-pipeline \
+  --dataset robikscube/hourly-energy-consumption --kaggle-file PJME_hourly.csv \
+  --n-estimators 500 --max-depth 20
+```
+
+After a run, `scripts/export_champion.py` (outside the container, or
+appended as a second `docker run`) picks up the new champion for serving
+if it got promoted.
+
 ## Project layout
 
 ```
@@ -249,7 +299,8 @@ energy-demand-mlops/
 ├── scripts/
 │   ├── validate_data.py     # Day 3: blocking + warning data checks
 │   ├── retrain_pipeline.py  # Day 3-4: champion/challenger retraining
-│   └── export_champion.py   # Day 5: export @champion to model/ for serving
+│   ├── export_champion.py   # Day 5: export @champion to model/ for serving
+│   └── run_pipeline.py      # Day 6-7: fetch->validate->features->retrain in one call
 ├── dags/
 │   └── energy_demand_pipeline.py   # Day 4: Airflow TaskFlow DAG
 ├── docker/
@@ -261,6 +312,7 @@ energy-demand-mlops/
 │   ├── metadata.json
 │   └── samples.json      # real rows for the UI's "load real example"
 ├── frontend/              # Day 5: Next.js UI, deployed to Vercel
+├── Dockerfile             # Day 6-7: full-pipeline image (see above)
 ├── Dockerfile.serve       # Day 5: serving-only image, deployed to Render
 ├── render.yaml            # Day 5: Render service definition
 ├── mlflow.db              # MLflow SQLite tracking store (created on first run)

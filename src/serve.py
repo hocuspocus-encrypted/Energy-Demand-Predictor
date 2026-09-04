@@ -82,7 +82,7 @@ def load_bundle():
     return pipeline, feature_columns, metadata, samples
 
 
-app = FastAPI(title="Energy Demand Predictor")
+app = FastAPI(title="WattFlow")
 
 allowed_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
 app.add_middleware(

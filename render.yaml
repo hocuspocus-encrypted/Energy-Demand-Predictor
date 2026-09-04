@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: energy-demand-predictor-api
+    name: wattflow-api
     runtime: docker
     dockerfilePath: ./Dockerfile.serve
     plan: free

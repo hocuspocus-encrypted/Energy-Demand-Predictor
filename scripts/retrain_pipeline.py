@@ -2,7 +2,7 @@
 Day 3-4: Champion/challenger retraining.
 
 Trains a new model (via src/train.py's run_training()), registers it as a
-new version of the "energy-demand-forecaster" MLflow registered model, and
+new version of the "wattflow" MLflow registered model, and
 compares its test MAE against the current @champion version. The new
 version is only promoted to @champion if it has a lower test MAE than the
 existing champion (or if there is no champion yet).
@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from train import run_training  # noqa: E402
 
-REGISTERED_MODEL_NAME = "energy-demand-forecaster"
+REGISTERED_MODEL_NAME = "wattflow"
 CHAMPION_ALIAS = "champion"
 STATUS_FILE = ROOT / "data" / "retrain_status.json"
 

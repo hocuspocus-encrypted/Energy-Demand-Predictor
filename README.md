@@ -1,4 +1,4 @@
-# Energy Demand Predictor
+# WattFlow
 
 An end-to-end MLOps project that forecasts hourly electricity grid demand:
 real PJM East load data, a tracked and versioned training pipeline,
@@ -7,7 +7,7 @@ champion/challenger retraining, and a served model behind a public web UI.
 **Live demo:** [energydemandpredictor.vercel.app](https://energydemandpredictor.vercel.app)
 **API:** [energy-demand-predictor-9vvq.onrender.com/docs](https://energy-demand-predictor-9vvq.onrender.com/docs)
 
-![Energy Demand Predictor UI](docs/demo.png)
+![WattFlow UI](docs/demo.png)
 
 ## What it does
 
@@ -54,6 +54,34 @@ Kaggle (PJM grid data)
   exported to a small standalone bundle (`model/`) so the deployed API
   doesn't need MLflow, a database, or the multi-hundred-MB run history at
   request time.
+
+## Model performance
+
+Current champion (`wattflow` registry, version 13, run `5237e7c8`):
+RandomForestRegressor, 300 trees, max depth 12, min samples/leaf 5, 22
+features, chronological 80/20 split.
+
+| Split | Rows | MAE (MW) | RMSE (MW) | MAPE |
+|---|---|---|---|---|
+| Train | 116,155 | 218.3 | 314.8 | 0.67% |
+| Test | 29,039 | 282.7 | 390.8 | **0.91%** |
+
+Trained on real PJM East hourly grid demand, 2002–2018 (Kaggle:
+[`robikscube/hourly-energy-consumption`](https://www.kaggle.com/datasets/robikscube/hourly-energy-consumption),
+`PJME_hourly.csv`). Demand ranges roughly 14,500–62,000 MW over that
+period, so 283 MW test MAE is well under 1% of typical load — expected,
+given demand is highly autocorrelated and the lag/rolling features (last
+1h/2h/3h/24h/168h, plus rolling mean/std) capture most of that structure;
+weather in this dataset is a synthesized companion signal (see
+[Notable engineering details](#notable-engineering-details)), not the
+original real weather series.
+
+Train and test MAPE are close (0.67% vs 0.91%), so the gap is normal
+generalization error, not overfitting. Reproduce these numbers with
+`python src/train.py --run-name baseline_rf` after fetching real data (see
+[SETUP.md](SETUP.md)), or compare against a champion's exact metrics any
+time via `model/metadata.json` (after `scripts/export_champion.py`) or the
+MLflow UI (`mlflow ui --backend-store-uri sqlite:///mlflow.db`).
 
 ## Notable engineering details
 
